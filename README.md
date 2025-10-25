@@ -26,4 +26,3 @@ This project involves the development of a web system 🌐 that provides informa
 🌐 Frontend (React, HTML, CSS, JavaScript)
 
 🧰 Tools: Git, Docker, VSCode
->>>>>>> 8269d4e31 (Inserindo os arquivos do projeto)
