@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ImunizaChat</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg-color: #0f172a;
+        --card-color: #1e293b;
+        --accent-color: #38bdf8;
+        --text-color: #e2e8f0;
+        --user-bubble: #38bdf8;
+        --assistant-bubble: #1e293b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        background: linear-gradient(135deg, var(--bg-color), #1e1b4b);
+        color: var(--text-color);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+
+      .chatbot-container {
+        width: min(960px, 100%);
+        display: grid;
+        gap: 16px;
+        background-color: rgba(15, 23, 42, 0.6);
+        border-radius: 24px;
+        padding: 32px;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
+        backdrop-filter: blur(12px);
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      header h1 {
+        margin: 0;
+        font-size: 1.75rem;
+        letter-spacing: 0.02em;
+      }
+
+      header span {
+        font-size: 0.95rem;
+        color: #94a3b8;
+      }
+
+      .conversation {
+        height: clamp(360px, 55vh, 600px);
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding-right: 12px;
+      }
+
+      .message {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-width: 75%;
+        line-height: 1.5;
+        padding: 14px 18px;
+        border-radius: 18px;
+        backdrop-filter: blur(4px);
+        animation: fade-in 180ms ease-in;
+      }
+
+      .message.user {
+        align-self: flex-end;
+        background: var(--user-bubble);
+        color: #0f172a;
+        border-bottom-right-radius: 4px;
+      }
+
+      .message.assistant {
+        align-self: flex-start;
+        background: var(--assistant-bubble);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-bottom-left-radius: 4px;
+      }
+
+      .message time {
+        font-size: 0.75rem;
+        color: rgba(148, 163, 184, 0.65);
+      }
+
+      form {
+        display: grid;
+        gap: 12px;
+      }
+
+      .input-wrapper {
+        display: flex;
+        gap: 12px;
+        align-items: stretch;
+      }
+
+      textarea {
+        flex: 1;
+        resize: none;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 16px;
+        padding: 16px;
+        min-height: 64px;
+        font-size: 1rem;
+        font-family: inherit;
+        color: inherit;
+        background: rgba(15, 23, 42, 0.75);
+        transition: border-color 120ms ease, box-shadow 120ms ease;
+      }
+
+      textarea:focus {
+        outline: none;
+        border-color: var(--accent-color);
+        box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+      }
+
+      button {
+        padding: 0 28px;
+        border: none;
+        border-radius: 16px;
+        background: var(--accent-color);
+        color: #0f172a;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: transform 120ms ease, box-shadow 120ms ease;
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      button:not(:disabled):hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 30px rgba(56, 189, 248, 0.35);
+      }
+
+      .status {
+        font-size: 0.9rem;
+        color: #facc15;
+        min-height: 1.1em;
+      }
+
+      @keyframes fade-in {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (max-width: 768px) {
+        body {
+          padding: 12px;
+        }
+
+        .chatbot-container {
+          padding: 20px;
+        }
+
+        .conversation {
+          height: 60vh;
+        }
+
+        .message {
+          max-width: 85%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="chatbot-container" id="chatbot-container">
+      <header>
+        <div>
+          <h1>ImunizaChat</h1>
+          <span>Assistente virtual sobre vacinas</span>
+        </div>
+        <span class="status" id="status"></span>
+      </header>
+
+      <section class="conversation" id="conversation" aria-live="polite"></section>
+
+      <form id="chat-form">
+        <div class="input-wrapper">
+          <textarea
+            id="message"
+            name="message"
+            placeholder="Digite sua pergunta sobre vacinas..."
+            required
+          ></textarea>
+          <button type="submit" id="send-button">Enviar</button>
+        </div>
+      </form>
+    </div>
+
+    <script>
+      const API_URL = "http://localhost:8000/chat";
+      const conversationEl = document.getElementById("conversation");
+      const formEl = document.getElementById("chat-form");
+      const messageEl = document.getElementById("message");
+      const sendButton = document.getElementById("send-button");
+      const statusEl = document.getElementById("status");
+
+      let sessionId = null;
+      let isSending = false;
+
+      const formatTime = (date = new Date()) =>
+        date
+          .toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+          .replace(":", "h");
+
+      function appendMessage(role, content) {
+        const wrapper = document.createElement("article");
+        wrapper.className = `message ${role}`;
+
+        const text = document.createElement("p");
+        text.innerText = content;
+        wrapper.appendChild(text);
+
+        const time = document.createElement("time");
+        time.dateTime = new Date().toISOString();
+        time.textContent = formatTime();
+        wrapper.appendChild(time);
+
+        conversationEl.appendChild(wrapper);
+        conversationEl.scrollTop = conversationEl.scrollHeight;
+      }
+
+      async function sendMessage(message) {
+        isSending = true;
+        statusEl.textContent = "Consultando o ImunizaChat...";
+        sendButton.disabled = true;
+
+        try {
+          const response = await fetch(API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              message,
+              session_id: sessionId,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || "Erro ao consultar o ImunizaChat");
+          }
+
+          const data = await response.json();
+          sessionId = data.session_id;
+          appendMessage("assistant", data.reply);
+          statusEl.textContent = "";
+        } catch (error) {
+          appendMessage(
+            "assistant",
+            error.message +
+              "\nPor favor, verifique se o servidor FastAPI está em execução (uvicorn api:app --reload)."
+          );
+          statusEl.textContent = "Não foi possível obter resposta";
+        } finally {
+          isSending = false;
+          sendButton.disabled = false;
+        }
+      }
+
+      formEl.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const message = messageEl.value.trim();
+        if (!message || isSending) return;
+
+        appendMessage("user", message);
+        messageEl.value = "";
+        messageEl.focus();
+        sendMessage(message);
+      });
+    </script>
+  </body>
+</html>
