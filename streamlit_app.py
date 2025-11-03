@@ -3,7 +3,6 @@ import streamlit as st
 import asyncio
 import os
 
-# Import all the message part classes
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -14,7 +13,7 @@ from pydantic_ai.messages import (
     ToolCallPart,
     ToolReturnPart,
     RetryPromptPart,
-    ModelMessagesTypeAdapter
+    ModelMessagesTypeAdapter,
 )
 
 from rag_agent import agent, RAGDeps
@@ -22,85 +21,83 @@ from utils import get_chroma_client
 
 load_dotenv()
 
+
 async def get_agent_deps():
     return RAGDeps(
         chroma_client=get_chroma_client("./chroma_db"),
         collection_name="docs",
-        embedding_model="all-MiniLM-L6-v2"
+        embedding_model="all-MiniLM-L6-v2",
     )
 
 
 def display_message_part(part):
     """
-    Display a single part of a message in the Streamlit UI.
-    Customize how you display system prompts, user prompts,
-    tool calls, tool returns, etc.
+    Mostra uma parte da mensagem no Streamlit.
     """
-    # user-prompt
-    if part.part_kind == 'user-prompt':
+    if part.part_kind == "user-prompt":
         with st.chat_message("user"):
             st.markdown(part.content)
-    # text
-    elif part.part_kind == 'text':
+    elif part.part_kind == "text":
         with st.chat_message("assistant"):
-            st.markdown(part.content)             
-
-async def run_agent_with_streaming(user_input):
-    async with agent.run_stream(
-        user_input, deps=st.session_state.agent_deps, message_history=st.session_state.messages
-    ) as result:
-        async for message in result.stream_text(delta=True):  
-            yield message
-
-    # Add the new messages to the chat history (including tool calls and responses)
-    st.session_state.messages.extend(result.new_messages())
+            st.markdown(part.content)
 
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# ~~~~~~~~~~~~~~~~~~ Main Function with UI Creation ~~~~~~~~~~~~~~~~~~~~
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+async def run_agent_once(user_input: str) -> str:
+    """
+    Roda o agente UMA vez (sem streaming).
+    Se não conseguir falar com o modelo online, devolve uma msg de erro.
+    """
+    try:
+        result = await agent.run(
+            user_input,
+            deps=st.session_state.agent_deps,
+            message_history=st.session_state.messages,
+        )
+        # guarda histórico novo (inclui tool calls)
+        st.session_state.messages.extend(result.new_messages())
+        # o pydantic-ai devolve o texto em result.data
+        return result.data
+    except Exception as e:
+        # aqui captura exatamente o erro que você estava vendo (APITimeoutError / ConnectTimeout)
+        return (
+            "⚠️ Não consegui falar com o modelo online agora. "
+            "Verifique internet, firewall ou sua OPENAI_API_KEY.\n\n"
+            f"Detalhes técnicos: `{type(e).__name__}: {e}`"
+        )
+
 
 async def main():
-    st.title("ChromaDB Crawl4AI RAG AI Agent")
+    st.title("IMUNIZACHAT")
 
-    # Initialize chat history in session state if not present
+    # estado
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "agent_deps" not in st.session_state:
-        st.session_state.agent_deps = await get_agent_deps()  
+        st.session_state.agent_deps = await get_agent_deps()
 
-    # Display all messages from the conversation so far
-    # Each message is either a ModelRequest or ModelResponse.
-    # We iterate over their parts to decide how to display them.
+    # mostra histórico já existente
     for msg in st.session_state.messages:
-        if isinstance(msg, ModelRequest) or isinstance(msg, ModelResponse):
+        if isinstance(msg, (ModelRequest, ModelResponse)):
             for part in msg.parts:
                 display_message_part(part)
 
-    # Chat input for the user
-    user_input = st.chat_input("What do you want to know?")
+    # input do chat
+    user_input = st.chat_input("O que você quer saber sobre vacinas?")
 
     if user_input:
-        # Display user prompt in the UI
+        # mostra o que o usuário falou
         with st.chat_message("user"):
             st.markdown(user_input)
 
-        # Display the assistant's partial response while streaming
+        # mostra placeholder do assistente
         with st.chat_message("assistant"):
-            # Create a placeholder for the streaming text
-            message_placeholder = st.empty()
-            full_response = ""
-            
-            # Properly consume the async generator with async for
-            generator = run_agent_with_streaming(user_input)
-            async for message in generator:
-                full_response += message
-                message_placeholder.markdown(full_response + "▌")
-            
-            # Final response without the cursor
-            message_placeholder.markdown(full_response)
+            placeholder = st.empty()
+            placeholder.markdown("⏳ consultando o agente...")
+
+            answer = await run_agent_once(user_input)
+
+            # mostra resposta final
+            placeholder.markdown(answer)
 
 
 if __name__ == "__main__":
